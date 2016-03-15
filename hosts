@@ -1,0 +1,13 @@
+#apache server
+[webserver]
+x.x.x.x
+
+#apache tomcat
+[application]
+x.x.x.x
+
+#redis
+[redis]
+x.x.x.x
+
+#please update ansible hosts in the following format with the ip address of the hosts
