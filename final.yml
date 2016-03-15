@@ -1,0 +1,103 @@
+---
+- hosts: webserver
+  remote_user: root
+  vars:
+    http_port: 80
+    max_client: 300
+  tasks:
+  - name: Installing  httpd and check
+    yum: name=httpd state=latest
+  
+  - name: Start the Apache Service
+    service: name=httpd state=started enabled=yes
+
+- hosts: application
+  remote_user: root
+  handlers:
+  - name: restart tomcat 
+    service: name=tomcat state=restarted
+
+  - name: restart iptables
+    service: name=iptables state=restarted
+
+  tasks:
+  - name: Install deps
+    yum: name={{item}} state=latest
+    with_items:
+    - java-1.7.0-openjdk
+    - iptables-services
+
+  - name: Add group "tomcat"
+    group: name=tomcat
+
+  - name: Add user "tomcat"
+    user: name=tomcat group=tomcat home=/usr/share/tomcat createhome=no
+
+  - name: Download tomcat tarball
+    get_url: url=http://mirror.cogentco.com/pub/apache/tomcat/tomcat-8/v8.0.32/bin/apache-tomcat-8.0.32.tar.gz dest=/opt/apache-tomcat-8.0.32.tar.gz
+
+  - name: Extracting tarball
+    command: chdir=/usr/share /bin/tar xvf /opt/apache-tomcat-8.0.32.tar.gz -C /opt/ creates=/opt/apache-tomcat-8.0.32
+
+  - name: Setup install directory
+    file: src=/opt/apache-tomcat-8.0.32 path=/usr/share/tomcat state=link
+
+  - name: Changing ownership
+    file: path=/usr/share/tomcat/ owner=tomcat group=tomcat state=directory recurse=yes
+  
+  - name: Configuring tomcat server
+    copy: src=server.xml dest=/usr/share/tomcat/conf/
+    notify:
+    - restart tomcat
+
+  - name: Configuring tomcat users
+    copy: src=tomcat-users.xml dest=/usr/share/tomcat/conf/
+    notify:
+    - restart tomcat
+
+  - name: Install tomcat init script
+    copy: src=tomcat-initscript.sh dest=/etc/init.d/tomcat mode=0755
+
+  - name: Start tomcat
+    service: name=tomcat state=started enabled=yes
+
+  - name: Deploying iptables
+    copy: src=iptables-save dest=/etc/sysconfig/iptables
+    notify: 
+    - restart iptables
+
+- hosts: redis
+  remote_user: root
+  tasks:
+  - name: install redis deps
+    yum: name={{item}} state=latest
+    with_items:
+    - make
+    - gcc
+    - tcl
+    - kernel-devel
+
+  - name: create /etc/redis
+    file: path=/etc/redis state=directory mode=0755
+
+  - name: create /var/lib/redis
+    file: path=/var/lib/redis state=directory mode=0755  
+
+  - name: download redis source
+    get_url: url=http://download.redis.io/releases/redis-3.0.7.tar.gz dest=/tmp/redis-3.0.7.tar.gz
+
+  - name: untar redis tarball
+    command: tar zxf /tmp/redis-3.0.7.tar.gz -C /tmp
+
+  - name: compile redis
+    shell: make -C /tmp/redis-3.0.7
+
+  - name: install redis
+    shell: chdir=/tmp/redis-3.0.7/ make install
+
+  - name: configuring redis
+    shell: chdir=/tmp/redis-3.0.7 echo -n | utils/install_server.sh
+
+  - name: start redis
+    shell: /etc/init.d/redis_6379 start
+ 
